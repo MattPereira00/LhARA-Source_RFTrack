@@ -152,5 +152,3 @@ print("RF_TRACK: ", norm_px_rftrack, norm_py_rftrack, norm_pz_rftrack)
 print("GPT: ", norm_xp_gpt, norm_yp_gpt, norm_zp_gpt)
 
 print("--Step--\nSigma_X_diff_gpt = ", xp_diff_gpt, "\nSigma_Y_diff_gpt = ", yp_diff_gpt, "\nSigma_Z_diff_gpt = ", zp_diff_gpt)
-
-bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(pico_step, rft.protonmass, "Beams/LhARA_0cm_threepart-bdsimin.dat")
