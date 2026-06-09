@@ -6,7 +6,7 @@ import pybdsim
 
 import bdsim2rftrack
 from plot_residuals import plot_tracking_residuals
-import sys
+
 
 np.set_printoptions(precision=14)
 
@@ -28,14 +28,36 @@ G_ref = 1 + (Ek_ref/mass)
 B_ref = np.sqrt(1 - (1/G_ref**2))
 V_ref = B_ref * rft.clight
 p_ref = np.sqrt((mass+15)**2 - mass**2)
-t_out = (0.05/V_ref)
+t_init = (0.05/V_ref)
 
 # Build the beam from BDSIM userfile
 bunch_init = bdsim2rftrack.bdsim_userfile_to_rftrack_bunch6DT(
-    "Beams/LhARA_0cm_pm2-bdsimin.dat",
+    filename="Beams/LhARA_5cm_pm2-rftrack.dat",
     particle_mass=mass,
     particle_charge=1,
     bunch_charge=1e9
+)
+
+# 2mm cut at nozzle entrance
+bunch_cut = bdsim2rftrack.apply_radial_cut_bunch6DT(
+    bunch=bunch_init,
+    cutradius=0.002
+)
+
+# Convert cut rftrack bunch to bdsim infile
+bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(
+    bunch=bunch_cut,
+    particle_mass=mass,
+    filename="Beams/LhARA_5cm_pm2-cut-rftrack.dat"
+)
+
+# Convert the cut rftrack beam at 5cm to a -gpt infile
+bdsim2rftrack.bdsim_userfile_to_gptin(
+    filename="Beams/LhARA_5cm_pm2-cut-rftrack.dat",
+    particle_mass=mass,
+    particle_charge=1,
+    time_init=t_init,
+    output_filename="LhARA_5cm_pm2-cut-gpt.txt"
 )
 
 # Elements
@@ -51,17 +73,17 @@ world.add(line, 0, 0, 0, 'entrance')
 
 # Tracking Options
 world.odeint_algorithm = "rk4"
-world.t_max_mm=t_out * rft.clight * 1e3 # 5cm for reference particle
-
+world.t_max_mm=1e-12*rft.clight*1e3 # picosecond step after ref particle at 5cm
 
 # Tracking
-ps_init = get_coords_6DT(bunch_init)
-bunch_at_nozzle = world.track(bunch_init)
-ps_nozzle = get_coords_6DT(bunch_at_nozzle)
+ps_init = get_coords_6DT(bunch_cut)
+bunch_after_nozzle = world.track(bunch_cut)
+ps_nozzle = get_coords_6DT(bunch_after_nozzle)
 
 bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(
-    bunch=bunch_at_nozzle, particle_mass=mass,
-    filename="Beams/LhARA_5cm_pm2-rftrack.dat"
+    bunch=bunch_after_nozzle,
+    particle_mass=mass,
+    filename="Beams/LhARA_5cm_pm2-step-rftrack.dat"
 )
 
 # RF_Track
@@ -73,7 +95,7 @@ norm_px_rftrack = px / p_ref
 norm_py_rftrack = py / p_ref
 
 # GPT
-gpt_data = pygpt.Reader.LoadGptData("../GPT/IdealTNSA/pm2/Source/LhARA_5cm_pm2.txt").times[0]
+gpt_data = pygpt.Reader.LoadGptData("../GPT/IdealTNSA/pm2/Source/LhARA_5cm_pm2-step.txt").times[0]
 x_gpt = gpt_data.GetColumn('x')
 y_gpt = gpt_data.GetColumn('y')
 px_gpt = gpt_data.GetAbsolutexp()
@@ -97,24 +119,24 @@ gpt = {
 plot_tracking_residuals(
     ref=rf,
     other=gpt,
-    out_pdf="plots/LhARA_0to5cm_pm2_Residual_RF_GPT.pdf",
+    out_pdf="plots/LhARA_5cm_pm2_Residual_RF_GPT.pdf",
     ref_name="RFTrack",
     other_name="GPT",
     showPlot=False,
 )
-sys.exit()
-# Run BDSIM Primaries for the 5cm Beam
-pybdsim.Run.Bdsim(gmadpath="BDSIM/5cmprim.gmad",
-                  outfile="Beams/LhARA_5cm_pm2-bdsim",
+
+# Run BDSIM Primaries for the 5cm cut Beam
+pybdsim.Run.Bdsim(gmadpath="BDSIM/5cmprimcut.gmad",
+                  outfile="Beams/LhARA_5cm_pm2-cut-bdsim",
                   ngenerate=len(x_rftrack),
                   silent=True,
                   )
-pybdsim.Run.RebdsimOptics(rootpath="Beams/LhARA_5cm_pm2-bdsim.root",
-                          outpath="Beams/LhARA_5cm_pm2-bdsim-optics.root",
+pybdsim.Run.RebdsimOptics(rootpath="Beams/LhARA_5cm_pm2-cut-bdsim.root",
+                          outpath="Beams/LhARA_5cm_pm2-cut-bdsim-optics.root",
                           silent=True
                           )
-pygpt.Plot.Phasespace.BDSIMPhaseSpace(filename="Beams/LhARA_5cm_pm2-bdsim.root",
-                                      outputfilename="plots/LhARA_5cm_pm2"+"_BDSPS",
+pygpt.Plot.Phasespace.BDSIMPhaseSpace(filename="Beams/LhARA_5cm_pm2-cut-bdsim.root",
+                                      outputfilename="plots/LhARA_5cm_pm2-cut"+"_BDSPS",
                                       coordsTitle=" ",
                                       correlationTitle=" ",
                                       )

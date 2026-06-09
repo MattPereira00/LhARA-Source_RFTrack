@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# PyCharm
+.idea/
+
+# Data / outputs
+*.root
+*-gpt.dat
+*-rftrack.dat
+*-gptin.txt
+*-gpt.txt
+*-rftrack.txt
+*.gdf
+plots/
+Scratch/
+
+# OS
+.DS_Store
+

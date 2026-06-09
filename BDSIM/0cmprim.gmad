@@ -1,0 +1,13 @@
+d1: drift, l=0.05;
+l1: line=(d1);
+use, l1;
+
+beam, particle="proton",
+        energy=953.27231*MeV,
+        distrType="userfile",
+        distrFile="../Beams/LhARA_0cm_pm2-bdsimin.dat",
+        distrFileFormat = "x[m]:y[m]:S[m]:xp[rad]:yp[rad]:E[MeV]";
+
+sample, all;
+
+!option, generatePrimariesOnly=1;

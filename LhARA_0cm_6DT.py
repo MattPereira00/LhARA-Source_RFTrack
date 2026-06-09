@@ -1,8 +1,11 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import RF_Track as rft
 import pygpt
+import pybdsim
+
 import bdsim2rftrack
-from scipy import constants as con
+from plot_residuals import plot_tracking_residuals
 
 np.set_printoptions(precision=14)
 
@@ -16,82 +19,28 @@ def get_coords_6DT(bunch):
         "z": ps[:,4],
         "p_z": ps[:,5],
     }
+
+# Define the reference particle properties
 mass = 938.2720885731878 #con.physical_constants["proton mass energy equivalent in MeV"][0]
-print(mass)
-# Build the beam from BDSIM userfile
-# bunch_init = bdsim2rftrack.bdsim_userfile_to_rftrack_bunch6DT(
-#     "Beams/LhARA_0cm_pm2-bdsimin.dat", mass, 1, 1e9)
+Ek_ref = 15 # MeV
+G_ref = 1 + (Ek_ref/mass)
+B_ref = np.sqrt(1 - (1/G_ref**2))
+V_ref = B_ref * rft.clight
+p_ref = np.sqrt((mass+15)**2 - mass**2)
 
-# Two Particle Validation
-x = [0.0, 0.0, 0.0]
-y = [0.0, 0.0, 0.0]
-z = [0.0, 0.0, 0.0]
+# Convert the -bdsimin file to a -gptin file
+bdsim2rftrack.bdsim_userfile_to_gptin(
+    "Beams/LhARA_0cm_pm2-bdsimin.dat",
+    mass, 1, 0.0,
+    "LhARA_0cm_pm2-gptin.txt")
 
-def momentum_components(P, xp, yp):
-    denom = np.sqrt(1 + xp**2 + yp**2)
-    pz = P / denom
-    px = xp * pz
-    py = yp * pz
-    return px, py, pz
-
-P1 = np.sqrt((mass+15.3)**2 - mass**2)
-P2 = np.sqrt((mass+14.7)**2 - mass**2)
-P3 = np.sqrt((mass+15.0)**2 - mass**2)
-xp = -0.1112133160895747
-yp = 0.0
-px1, py1, pz1 = momentum_components(P1, xp, yp)
-px2, py2, pz2 = momentum_components(P2, xp, yp)
-px3, py3, pz3 = momentum_components(P3, xp, yp)
-
-Px = np.array([px1, px2, px3])
-Py = np.array([py1, py2, py3])
-Pz = np.array([pz1, pz2, pz3])
-m = np.array([mass, mass, mass])
-Q = np.array([1.0, 1.0, 1.0])
-N_macro = 1
-
-bunch_array = np.column_stack([
-    x, Px,
-    y, Py,
-    z, Pz,
-    m,
-    Q,
-    np.full(len(x), N_macro),
-])
-bunch_init = rft.Bunch6dT(bunch_array)
-
-# Export two particles to GPT
-# normalized momentum (dimensionless)
-GBx = Px / m
-GBy = Py / m
-GBz = Pz / m
-
-GB = np.sqrt(GBx**2 + GBy**2 + GBz**2)
-gamma = np.sqrt(1 + GB**2)
-print(gamma)
-#
-# t = [0.0, 0.0, 0.0]
-#m_kg = mass * 1.78266192e-30
-#
-# particles = np.column_stack([
-#     x,
-#     y,
-#     z,
-#     GBx,
-#     GBy,
-#     GBz,
-#     t,
-#     gamma,
-#     np.full(len(x), m_kg)
-# ])
-#
-# np.savetxt(
-#     "Beams/LhARA_0cm_twopart-gptin.txt",
-#     particles,
-#     fmt="%.18e",
-#     delimiter="\t",
-#     header="x\ty\tz\tGBx\tGBy\tGBz\tt\tG\tm"
-# )
+# Build the bunch from BDSIM userfile
+bunch_init = bdsim2rftrack.bdsim_userfile_to_rftrack_bunch6DT(
+    filename="Beams/LhARA_0cm_pm2-bdsimin.dat",
+    particle_mass=mass,
+    particle_charge=1,
+    bunch_charge=1e9
+)
 
 # Elements
 source_to_nozzle = rft.Drift(length=0.05)
@@ -110,47 +59,67 @@ world.odeint_algorithm = "rk4"
 
 # Tracking
 ps_init = get_coords_6DT(bunch_init)
-GB_X_init = ps_init["p_x"]/mass
-
 pico_step = world.track(bunch_init)
 step_ps = get_coords_6DT(pico_step)
 
-# Step dist comparison
-px_rftrack = step_ps["p_x"]
-py_rftrack = step_ps["p_y"]
-pz_rftrack = step_ps["p_z"]
+bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(
+    bunch=pico_step,
+    particle_mass=mass,
+    filename="Beams/LhARA_0cm_pm2-step-rftrack.dat"
+)
 
-p_ref = np.sqrt((mass+15)**2 - mass**2)
+# dist comparison
+x_rftrack = step_ps["x"]*1e-3
+y_rftrack = step_ps["y"]*1e-3
+px = step_ps["p_x"]
+py = step_ps["p_y"]
+norm_px_rftrack = px / p_ref
+norm_py_rftrack = py / p_ref
 
-norm_px_rftrack = px_rftrack / p_ref
-norm_py_rftrack = py_rftrack / p_ref
-norm_pz_rftrack = pz_rftrack / p_ref
+gpt_data = pygpt.Reader.LoadGptData("../GPT/IdealTNSA/pm2/Source/LhARA_0cm_pm2.txt").times[0]
+x_gpt = gpt_data.GetColumn('x')
+y_gpt = gpt_data.GetColumn('y')
+px_gpt = gpt_data.GetAbsolutexp()
+py_gpt = gpt_data.GetAbsoluteyp()
+norm_px_gpt = px_gpt / p_ref
+norm_py_gpt = py_gpt / p_ref
 
-sigma_px_rftrack = np.std(norm_px_rftrack)
-sigma_py_rftrack = np.std(norm_py_rftrack)
-sigma_pz_rftrack = np.std(norm_pz_rftrack)
+rf = {
+    "x": x_rftrack,
+    "y": y_rftrack,
+    "px": norm_px_rftrack,
+    "py": norm_py_rftrack,
+}
 
-initial_gdfa_data = pygpt.Reader.LoadGdfaData("../GPT/IdealTNSA/pm2/Source/LhARA_0cm_twopart-gdfa.txt")
-sigma_xp_gpt = initial_gdfa_data.Sigma_xp()[-1]
-sigma_yp_gpt = initial_gdfa_data.Sigma_yp()[-1]
-sigma_zp_gpt = initial_gdfa_data.Sigma_zp()[-1]
+gpt = {
+    "x": x_gpt,
+    "y": y_gpt,
+    "px": norm_px_gpt,
+    "py": norm_py_gpt,
+}
 
-initial_gpt_data = pygpt.Reader.LoadGptData("../GPT/IdealTNSA/pm2/Source/LhARA_0cm_twopart.txt").times[0]
-xp_gpt = initial_gpt_data.GetAbsolutexp()
-yp_gpt = initial_gpt_data.GetAbsoluteyp()
-zp_gpt = initial_gpt_data.GetAbsolutezp()
+plot_tracking_residuals(
+    ref=rf,
+    other=gpt,
+    out_pdf="plots/LhARA_0cm_pm2_Residual_RF_GPT.pdf",
+    ref_name="RFTrack",
+    other_name="GPT",
+    showPlot=False,
+)
 
-norm_xp_gpt = xp_gpt / p_ref
-norm_yp_gpt = yp_gpt / p_ref
-norm_zp_gpt = zp_gpt / p_ref
-
-xp_diff_gpt = norm_xp_gpt - norm_px_rftrack
-yp_diff_gpt = norm_yp_gpt - norm_py_rftrack
-zp_diff_gpt = norm_zp_gpt - norm_pz_rftrack
-
-print("RF_TRACK: ", norm_px_rftrack, norm_py_rftrack, norm_pz_rftrack)
-print("GPT: ", norm_xp_gpt, norm_yp_gpt, norm_zp_gpt)
-
-print("--Step--\nSigma_X_diff_gpt = ", xp_diff_gpt, "\nSigma_Y_diff_gpt = ", yp_diff_gpt, "\nSigma_Z_diff_gpt = ", zp_diff_gpt)
-
-bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(pico_step, rft.protonmass, "Beams/LhARA_0cm_threepart-bdsimin.dat")
+# Run BDSIM Primaries for the 0cm Beam
+pybdsim.Run.Bdsim(gmadpath="BDSIM/0cmprim.gmad",
+                  outfile="Beams/LhARA_0cm_pm2-bdsim",
+                  ngenerate=len(x_rftrack),
+                  silent=True,
+                  )
+pybdsim.Run.RebdsimOptics(rootpath="Beams/LhARA_0cm_pm2-bdsim.root",
+                          outpath="Beams/LhARA_0cm_pm2-bdsim-optics.root",
+                          silent=True
+                          )
+pygpt.Plot.Phasespace.BDSIMPhaseSpace(filename="Beams/LhARA_0cm_pm2-bdsim.root",
+                                      outputfilename="plots/LhARA_0cm_pm2"+"_BDSPS",
+                                      coordsTitle=" ",
+                                      correlationTitle=" ",
+                                      )
+plt.close('all')
