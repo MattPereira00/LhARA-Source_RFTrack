@@ -8,15 +8,13 @@ __pycache__/
 
 # Data / outputs
 *.root
-*-bdsimin.dat
-*-gpt.dat
-*-rftrack.dat
-*-gptin.txt
-*-gpt.txt
-*-rftrack.txt
+*.dat
+*.txt
 *.gdf
+*.pdf
 plots/
 Scratch/
+_Archive/
 
 # OS
 .DS_Store
