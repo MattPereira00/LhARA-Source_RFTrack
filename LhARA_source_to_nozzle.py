@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 LhARA source-to-nozzle tracking pipeline.
 
@@ -16,6 +15,16 @@ The final output (BDSIM format + GPT input) is ready for downstream tracking.
 Usage:
     python LhARA_source_to_nozzle.py Beams/LhARA_0cm_pm2-bdsimin.dat
     python LhARA_source_to_nozzle.py <input_file> [--outdir DIR] [--label LABEL]
+
+Running a subset of stages:
+    Use --stages to run only some of the four stages (1=drift 0->5cm,
+    2=cut at 5cm, 3=drift 5->10cm with SC, 4=cut at 10cm). <input_file> must
+    then be the beam file matching the state *before* the first selected
+    stage, e.g.:
+
+        # Run only stage 3 (5cm-cut -> 10cm with SC)
+        python LhARA_source_to_nozzle.py Beams/LhARA_0cm_pm2-5cm-cut-rftrack.dat \\
+            --stages 3 --label LhARA_0cm_pm2
 """
 import argparse
 import os
@@ -94,14 +103,30 @@ def main():
         help="BDSIM user file at 0 cm  [x  y  s  xp  yp  E]"
     )
     parser.add_argument(
-        "--outdir", default="Beams",
-        help="Directory for output beam files (default: Beams/)"
+        "--outdir", default="10-Beams",
+        help="Directory for output beam files (default: 10-Beams/)"
     )
     parser.add_argument(
         "--label", default=None,
         help="Stem for output filenames (default: derived from input filename)"
     )
+    parser.add_argument(
+        "--stages", default="1,2,3,4",
+        help=(
+            "Comma-separated list of stages to run (subset of 1,2,3,4). "
+            "1=drift 0->5cm, 2=cut at 5cm, 3=drift 5->10cm with SC, "
+            "4=cut at 10cm. <input_file> must match the beam state before "
+            "the first selected stage. Default: 1,2,3,4 (run everything)."
+        )
+    )
     args = parser.parse_args()
+
+    try:
+        stages = sorted({int(s) for s in args.stages.split(",") if s.strip()})
+    except ValueError:
+        parser.error(f"--stages must be a comma-separated list of integers, got: {args.stages!r}")
+    if not stages or any(s not in (1, 2, 3, 4) for s in stages):
+        parser.error(f"--stages must only contain values from {{1,2,3,4}}, got: {stages}")
 
     os.makedirs(args.outdir, exist_ok=True)
 
@@ -115,83 +140,71 @@ def main():
 
     _, _, V_ref, _ = _ref_particle(PROTON_MASS, EK_REF)
 
-    # ── Stage 1: 0 cm → 5 cm, free drift ─────────────────────────────────────
-    print("\n[1/4] Tracking 0 cm → 5 cm (free drift, no space charge) ...")
-    bunch_source = bdsim2rftrack.bdsim_userfile_to_rftrack_bunch6DT(
+    # Bunch carried forward through whichever stages are selected; the input
+    # file must match the beam state expected before the first selected stage.
+    bunch = bdsim2rftrack.bdsim_userfile_to_rftrack_bunch6DT(
         filename=args.input_file,
         particle_mass=PROTON_MASS,
         particle_charge=1,
         bunch_charge=BUNCH_CHARGE,
     )
+    last_path = args.input_file
 
-    t_max_5cm = (SOURCE_TO_ENTRANCE / V_ref) * rft.clight * 1e3   # mm/c
-    bunch_5cm = _track_drift(
-        bunch_source, SOURCE_TO_ENTRANCE, t_max_5cm, space_charge=False
-    )
+    # ── Stage 1: 0 cm → 5 cm, free drift ─────────────────────────────────────
+    if 1 in stages:
+        print("\n[1/4] Tracking 0 cm → 5 cm (free drift, no space charge) ...")
+        t_max_5cm = (SOURCE_TO_ENTRANCE / V_ref) * rft.clight * 1e3   # mm/c
+        bunch = _track_drift(bunch, SOURCE_TO_ENTRANCE, t_max_5cm, space_charge=False)
 
-    path_5cm = os.path.join(args.outdir, f"{label}-5cm-rftrack.dat")
-    bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(
-        bunch=bunch_5cm, particle_mass=PROTON_MASS, filename=path_5cm
-    )
-    _bunch_summary(bunch_5cm)
-    print(f"    Saved: {path_5cm}")
+        last_path = os.path.join(args.outdir, f"{label}-5cm-rftrack.dat")
+        bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(
+            bunch=bunch, particle_mass=PROTON_MASS, filename=last_path
+        )
+        _bunch_summary(bunch)
+        print(f"    Saved: {last_path}")
 
     # ── Stage 2: radial cut at nozzle entrance ────────────────────────────────
-    print(f"\n[2/4] Applying {CUT_RADIUS_5CM*1e3:.1f} mm radial cut at nozzle entrance ...")
-    bunch_5cm_cut = bdsim2rftrack.apply_radial_cut_bunch6DT(
-        bunch_5cm, cutradius=CUT_RADIUS_5CM
-    )
+    if 2 in stages:
+        print(f"\n[2/4] Applying {CUT_RADIUS_5CM*1e3:.1f} mm radial cut at nozzle entrance ...")
+        bunch = bdsim2rftrack.apply_radial_cut_bunch6DT(bunch, cutradius=CUT_RADIUS_5CM)
 
-    path_5cm_cut = os.path.join(args.outdir, f"{label}-5cm-cut-rftrack.dat")
-    bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(
-        bunch=bunch_5cm_cut, particle_mass=PROTON_MASS, filename=path_5cm_cut
-    )
-    _bunch_summary(bunch_5cm_cut)
-    print(f"    Saved: {path_5cm_cut}")
+        last_path = os.path.join(args.outdir, f"{label}-5cm-cut-rftrack.dat")
+        bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(
+            bunch=bunch, particle_mass=PROTON_MASS, filename=last_path
+        )
+        _bunch_summary(bunch)
+        print(f"    Saved: {last_path}")
 
     # ── Stage 3: 5 cm → 10 cm, drift with space charge ───────────────────────
-    print("\n[3/4] Tracking 5 cm → 10 cm (space charge active) ...")
-    t_max_10cm = (NOZZLE_LENGTH / V_ref) * rft.clight * 1e3   # mm/c
-    bunch_10cm = _track_drift(
-        bunch_5cm_cut, NOZZLE_LENGTH, t_max_10cm,
-        space_charge=True, sc_dt_mm=SC_DT_MM
-    )
+    if 3 in stages:
+        print("\n[3/4] Tracking 5 cm → 10 cm (space charge active) ...")
+        t_max_10cm = (NOZZLE_LENGTH / V_ref) * rft.clight * 1e3   # mm/c
+        bunch = _track_drift(
+            bunch, NOZZLE_LENGTH, t_max_10cm, space_charge=True, sc_dt_mm=SC_DT_MM
+        )
 
-    path_10cm = os.path.join(args.outdir, f"{label}-10cm-rftrack.dat")
-    bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(
-        bunch=bunch_10cm, particle_mass=PROTON_MASS, filename=path_10cm
-    )
-    _bunch_summary(bunch_10cm)
-    print(f"    Saved: {path_10cm}")
+        last_path = os.path.join(args.outdir, f"{label}-10cm-rftrack.dat")
+        bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(
+            bunch=bunch, particle_mass=PROTON_MASS, filename=last_path
+        )
+        _bunch_summary(bunch)
+        print(f"    Saved: {last_path}")
 
     # ── Stage 4: radial cut at nozzle exit ────────────────────────────────────
-    print(f"\n[4/4] Applying {CUT_RADIUS_10CM*1e3:.2f} mm radial cut at nozzle exit ...")
-    bunch_final = bdsim2rftrack.apply_radial_cut_bunch6DT(
-        bunch_10cm, cutradius=CUT_RADIUS_10CM
-    )
+    if 4 in stages:
+        print(f"\n[4/4] Applying {CUT_RADIUS_10CM*1e3:.2f} mm radial cut at nozzle exit ...")
+        bunch = bdsim2rftrack.apply_radial_cut_bunch6DT(bunch, cutradius=CUT_RADIUS_10CM)
 
-    path_final = os.path.join(args.outdir, f"{label}-10cm-cut-rftrack.dat")
-    bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(
-        bunch=bunch_final, particle_mass=PROTON_MASS, filename=path_final
-    )
-    _bunch_summary(bunch_final)
-    print(f"    Saved: {path_final}")
-
-    # GPT input file for downstream tracking
-    t_nozzle_exit = 0.10 / V_ref   # s
-    path_gpt = os.path.join(args.outdir, f"{label}-10cm-cut-gptin.txt")
-    bdsim2rftrack.bdsim_userfile_to_gptin(
-        filename=path_final,
-        particle_mass=PROTON_MASS,
-        particle_charge=1,
-        time_init=t_nozzle_exit,
-        output_filename=path_gpt,
-    )
-    print(f"    Saved GPT input: {path_gpt}")
+        last_path = os.path.join(args.outdir, f"{label}-10cm-cut-rftrack.dat")
+        bdsim2rftrack.rftrack_bunch6DT_to_bdsim_userfile(
+            bunch=bunch, particle_mass=PROTON_MASS, filename=last_path
+        )
+        _bunch_summary(bunch)
+        print(f"    Saved: {last_path}")
 
     print("\n── Pipeline complete ──────────────────────────────────────────────")
-    print(f"  Final beam file : {path_final}")
-    print(f"  GPT input file  : {path_gpt}")
+    print(f"  Stages run      : {stages}")
+    print(f"  Final beam file : {last_path}")
 
 
 if __name__ == "__main__":
