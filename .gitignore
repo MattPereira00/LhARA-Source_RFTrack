@@ -7,14 +7,19 @@ __pycache__/
 .idea/
 
 # Data / outputs
+.Archive/
+01-BDSIM/
+11-Plots/
+99-Scratch/
+
+
 *.root
 *.dat
 *.txt
 *.gdf
 *.pdf
-plots/
-Scratch/
-_Archive/
+
+
 
 # OS
 .DS_Store
