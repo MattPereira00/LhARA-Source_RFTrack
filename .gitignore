@@ -8,7 +8,6 @@ __pycache__/
 
 # Data / outputs
 .Archive/
-01-BDSIM/
 11-Plots/
 99-Scratch/
 
