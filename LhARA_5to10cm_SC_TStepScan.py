@@ -56,10 +56,6 @@ for sc_dt_mm in sc_dt_values:
         particle_charge=1,
         bunch_charge=1e9,
     )
-    # Re-centre z so particles start at the volume entrance, not at s~5cm
-    ps = bunch_entrance.get_phase_space("%X %Px %Y %Py %Z %Pz %m %Q %N")
-    ps[:, 4] -= ps[:, 4].mean()
-    bunch_entrance = rft.Bunch6dT(ps)
 
     nozzle = rft.Drift(length=0.05)
     line = rft.Lattice()

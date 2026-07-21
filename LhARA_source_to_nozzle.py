@@ -243,10 +243,6 @@ def main():
     # ── Stage 3: 5 cm → 10 cm, drift with space charge ───────────────────────
     if 3 in stages:
         print("\n[3/4] Tracking 5 cm → 10 cm (space charge active) ...")
-        # Re-centre z so the bunch starts at the volume entrance, not at s~5cm
-        ps = bunch.get_phase_space("%X %Px %Y %Py %Z %Pz %m %Q %N")
-        ps[:, 4] -= ps[:, 4].mean()
-        bunch = rft.Bunch6dT(ps)
         t_max_10cm = (NOZZLE_LENGTH / V_ref) * rft.clight * 1e3
         bunch = _track_drift(
             bunch, NOZZLE_LENGTH, t_max_10cm, space_charge=True, sc_dt_mm=SC_DT_MM
