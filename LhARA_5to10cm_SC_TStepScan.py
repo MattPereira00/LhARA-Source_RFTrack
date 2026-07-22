@@ -94,39 +94,43 @@ sigma_y   = np.array(results["sigma_y"])
 sigma_z   = np.array(results["sigma_z"])
 runtime_s = np.array(results["runtime_s"])
 
+c_mm_per_ns = 299.792458          # mm/ns
+sc_dt_ns    = sc_dt / c_mm_per_ns  # convert mm/c -> ns
+
 # ── Save numerical results to log file ───────────────────────────────────────
 log_path = f"{out_dir}/scan_results.txt"
-header = f"{'sc_dt_mm':>14}  {'sigma_x':>14}  {'sigma_y':>14}  {'sigma_z':>14}  {'runtime_s':>12}"
+header = f"{'sc_dt_mm':>14}  {'sc_dt_ns':>14}  {'sigma_x':>14}  {'sigma_y':>14}  {'sigma_z':>14}  {'runtime_s':>12}"
 with open(log_path, "w") as f:
     f.write(header + "\n")
     for i in range(len(sc_dt)):
-        f.write(f"{sc_dt[i]:>14.6e}  {sigma_x[i]:>14.6e}  {sigma_y[i]:>14.6e}  "
+        f.write(f"{sc_dt[i]:>14.6e}  {sc_dt_ns[i]:>14.6e}  {sigma_x[i]:>14.6e}  {sigma_y[i]:>14.6e}  "
                 f"{sigma_z[i]:>14.6e}  {runtime_s[i]:>12.3f}\n")
 print(f"\nSaved numerical results: {log_path}")
 
 # ── Plot 1: sigma_x and sigma_y vs sc_dt, runtime on twin axis ───────────────
 fig1, ax1 = plt.subplots(figsize=(8, 5))
-ax1.semilogx(sc_dt, sigma_x, "o-", label=r"$\sigma_x$")
-ax1.semilogx(sc_dt, sigma_y, "s-", label=r"$\sigma_y$")
-ax1.set_xlabel(r"Space Charge Time Step [mm/c]")
+ax1.semilogx(sc_dt_ns, sigma_x, "o-", label=r"$\sigma_x$")
+ax1.semilogx(sc_dt_ns, sigma_y, "s-", label=r"$\sigma_y$")
+ax1.set_xlabel(r"Space Charge Time Step [ns]")
 ax1.set_ylabel(r"Beam size [m]")
 ax1.grid(True, which="both", alpha=0.3)
 
 ax1b = ax1.twinx()
-ax1b.semilogx(sc_dt, runtime_s, "^-", color="tab:red", label="runtime")
+ax1b.semilogx(sc_dt_ns, runtime_s, "^-", color="tab:red", label="runtime")
 ax1b.set_ylabel("Computational time [s]", color="tab:red")
 ax1b.tick_params(axis="y", labelcolor="tab:red")
 
 lines1, labels1 = ax1.get_legend_handles_labels()
 lines2, labels2 = ax1b.get_legend_handles_labels()
 ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper center")
+ax1.invert_xaxis()
 fig1.tight_layout()
 fig1.savefig(f"{out_dir}/sigmaXY_runtime_vs_sc_dt.pdf")
 
 # ── Plot 2: sigma_z vs sc_dt, runtime on twin axis ───────────────────────────
 fig2, ax2 = plt.subplots(figsize=(8, 5))
-ax2.semilogx(sc_dt, sigma_z, "^-", label=r"$\sigma_z$")
-ax2.set_xlabel(r"Space Charge Time Step [mm/c]")
+ax2.semilogx(sc_dt_ns, sigma_z, "^-", label=r"$\sigma_z$")
+ax2.set_xlabel(r"Space Charge Time Step [ns]")
 ax2.set_ylabel(r"Beam size [m]")
 ax2.grid(True, which="both", alpha=0.3)
 
@@ -138,6 +142,7 @@ ax2b.tick_params(axis="y", labelcolor="tab:red")
 lines3, labels3 = ax2.get_legend_handles_labels()
 lines4, labels4 = ax2b.get_legend_handles_labels()
 ax2.legend(lines3 + lines4, labels3 + labels4, loc="upper center")
+ax2.invert_xaxis()
 fig2.tight_layout()
 fig2.savefig(f"{out_dir}/sigmaZ_runtime_vs_sc_dt.pdf")
 
@@ -147,22 +152,23 @@ pct_y = (sigma_y - sigma_y[0]) / sigma_y[0] * 100
 pct_z = (sigma_z - sigma_z[0]) / sigma_z[0] * 100
 
 fig3, ax3 = plt.subplots(figsize=(8, 5))
-ax3.semilogx(sc_dt, pct_x, "o-", label=r"$\sigma_x$")
-ax3.semilogx(sc_dt, pct_y, "s-", label=r"$\sigma_y$")
-ax3.semilogx(sc_dt, pct_z, "^-", label=r"$\sigma_z$")
+ax3.semilogx(sc_dt_ns, pct_x, "o-", label=r"$\sigma_x$")
+ax3.semilogx(sc_dt_ns, pct_y, "s-", label=r"$\sigma_y$")
+ax3.semilogx(sc_dt_ns, pct_z, "^-", label=r"$\sigma_z$")
 ax3.axhline(0, color="k", linewidth=0.8, linestyle="--")
-ax3.set_xlabel(r"Space Charge Time Step [mm/c]")
+ax3.set_xlabel(r"Space Charge Time Step [ns]")
 ax3.set_ylabel(r"$\Delta\sigma$ / $\sigma_{\mathrm{coarse}}$ [%]")
 ax3.grid(True, which="both", alpha=0.3)
 
 ax3b = ax3.twinx()
-ax3b.semilogx(sc_dt, runtime_s, "^-", color="tab:red", label="runtime")
+ax3b.semilogx(sc_dt_ns, runtime_s, "^-", color="tab:red", label="runtime")
 ax3b.set_ylabel("Computational time [s]", color="tab:red")
 ax3b.tick_params(axis="y", labelcolor="tab:red")
 
 lines5, labels5 = ax3.get_legend_handles_labels()
 lines6, labels6 = ax3b.get_legend_handles_labels()
 ax3.legend(lines5 + lines6, labels5 + labels6, loc="upper center")
+ax3.invert_xaxis()
 fig3.tight_layout()
 fig3.savefig(f"{out_dir}/sigma_pct_diff_runtime_vs_sc_dt.pdf")
 
